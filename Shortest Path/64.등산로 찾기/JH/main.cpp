@@ -1,157 +1,121 @@
 #include <stdio.h>
-#include <string.h>
-
 #define debug(x) printf("%s is %d\n", #x, x);
-#define debugArr(a, n) do { \
-    printf("%s is |", #a); \
-    for (int i = 0; i < n; i++) printf("%d|", a[i]); \
-    printf("\n"); \
-} while(0)
-#define swap(type, a, b) do { \
-    type t = (a); \
-    (a) = (b); \
-    (b) = t; \
-} while(0)
-#define max(a, b) (((a) > (b)) ? (a) : (b))
 
+const int MAXN = 1e2 + 5;
+const int HEAP_MAX = MAXN * MAXN * 4;
 const int INF = 1e9;
-const int MAXN = 1e3 + 5;
-const int MAXM = 1e4 + 5;
-
-struct edge_t {
-    int to, weight;
-};
+const int dy[] = {-1, 0, 1, 0}, dx[] = {0, 1, 0, -1};
 
 int N;
-int M;
-int X;
+int grid[MAXN][MAXN];
+int visited[MAXN][MAXN];
+int dist[MAXN][MAXN];
 
-int unused;
-int head[MAXN];
-int next[MAXM];
-edge_t val[MAXM];
-
-void insert(int k, edge_t v) {
-    unused++;
-    val[unused] = v;
-    next[unused] = head[k];
-    head[k] = unused;
+bool inRange(int y, int x) {
+    return 0 < y && y <= N && 0 < x && x <= N;
 }
 
-struct comp {
-    bool operator()(const edge_t& a, const edge_t& b) const {
-        return a.weight > b.weight; // max heap
+struct point_t {
+    int y, x;
+    bool operator == (const point_t& other) {
+        return y == other.y && x == other.x;
+    }
+    bool operator != (const point_t& other) {
+        return !(y == other.y && x == other.x);
     }
 };
 
-template <typename T, int HEAP_SZ, typename Compare>
+struct node_t {
+    point_t p;
+    int w;
+};
+
 struct priority_queue {
+    node_t arr[HEAP_MAX];
     int sz = 0;
-    T arr[HEAP_SZ];
-    Compare cmp;
 
-    void heapify_down() {
-        int curr = 1;
-
-        while (curr * 2 <= sz) {
-            int left = curr * 2;
-            int right = curr * 2 + 1;
-
-            int larger_child = left;
-            if (right <= sz && cmp(arr[left], arr[right]))
-                larger_child = right;
-
-            if (cmp(arr[curr], arr[larger_child])) {
-                swap(T, arr[curr], arr[larger_child]);
-                curr = larger_child;
-            } else {
-                break;
-            }
+    void push(node_t node) {
+        arr[++sz] = node;
+        int c = sz;
+        while (c > 1 && arr[c].w < arr[c/2].w) {
+            node_t tmp = arr[c];
+            arr[c] = arr[c/2];
+            arr[c/2] = tmp;
+            c /= 2;
         }
     }
-
-    void heapify_up() {
-        int curr = sz;
-
-        while (curr > 1) {
-            int parent = curr / 2;
-            if (cmp(arr[parent], arr[curr])) {
-                swap(T, arr[parent], arr[curr]);
-                curr = parent;
-            } else {
-                break;
-            }
-        }
-    }
-
-    T pop() {
-        T ret = arr[1];
+    node_t pop() {
+        node_t ret = arr[1];
         arr[1] = arr[sz--];
-        if (sz > 0)
-            heapify_down();
+
+        int p = 1, c = 2;
+        while (c <= sz) {
+            if (c+1 <= sz && arr[c+1].w < arr[c].w) c++;
+            if (arr[p].w <= arr[c].w) break;
+            node_t tmp = arr[p];
+            arr[p] = arr[c];
+            arr[c] = tmp;
+            p = c; c *= 2;
+        }
         return ret;
     }
-
-    void push(const T &val) {
-        arr[++sz] = val;
-        heapify_up();
-    }
+    bool empty() { return sz == 0; }
 };
 
-int visited[MAXN];
-int dist[MAXN];
-int dijkstra(int start, int end) {
-    for (int i = 0; i < MAXN; i++) visited[i] = 0;
-    for (int i = 0; i < MAXN; i++) dist[i] = INF;
+int get_cost(int from, int to) {
+    if (from > to) return from - to;
+    else if (from < to) return (from - to) * (from - to);
+    return 0;
+}
 
-    priority_queue<edge_t, MAXM, comp> pq;
-    dist[start] = 0;
-    pq.push({start, dist[start]});
+priority_queue pq;
+point_t prev[MAXN][MAXN];
+int dijkstra(int ey, int ex) {
+    for (int y = 0; y <= N+1; y++)
+        for (int x = 0; x <= N+1; x++)
+            dist[y][x] = INF;
 
-    while (pq.sz) {
-        auto [cur, _] = pq.pop();
-        if (visited[cur]) continue;
-        visited[cur] = true;
+    for (int y = 1; y <= N; y++) {
+        dist[y][0] = dist[y][N+1] = 0;
+        pq.push({{y, 0}, dist[y][0]});
+        pq.push({{y, N+1}, dist[y][N+1]});
+    }
+    for (int x = 1; x <= N; x++) {
+        dist[0][x] = dist[N+1][x] = 0;
+        pq.push({{0, x}, dist[0][x]});
+        pq.push({{N+1, x}, dist[N+1][x]});
+    }
 
-        if (cur == end)
-            return dist[end];
+    while (!pq.empty()) {
+        const auto& [curr, _] = pq.pop();
+        const auto& [y, x] = curr;
+        if (visited[y][x]) continue;
+        visited[y][x] = true;
 
-        for (int node = head[cur]; node; node = next[node]) {
-            auto& [nxt, weight] = val[node];
-            if (dist[nxt] <= dist[cur] + weight) continue;
-            dist[nxt] = dist[cur] + weight;
-            pq.push({nxt, dist[nxt]});
+        if (y == ey && x == ex) return dist[ey][ex];
+
+        for (int d = 0; d < 4; d++) {
+            int ny = y + dy[d], nx = x + dx[d];
+            if (!inRange(ny, nx)) continue;
+            int cost = get_cost(grid[y][x], grid[ny][nx]);
+            if (dist[ny][nx] <= dist[y][x] + cost) continue;
+            dist[ny][nx] = dist[y][x] + cost;
+            pq.push({{ny, nx}, dist[ny][nx]});
+            prev[ny][nx] = {y, x};
         }
     }
+
     return -1;
 }
-
-int solve() {
-    int ans[MAXN] = {};
-    dijkstra(X, -1);
-    for (int i = 1; i <= N; i++)
-        ans[i] = dist[i];
-
-    for (int i = 1; i <= N; i++) {
-        int cost = dijkstra(i, X);
-        ans[i] += cost;
-    }
-
-    int ret = 0;
-    for (int i = 1; i <= N; i++)
-        ret = max(ret, ans[i]);
-    return ret;
-}
-
 int main() {
-    scanf("%d %d %d", &N, &M, &X);
-    for (int i = 0; i < M; i++) {
-        int from, to, dist;
-        scanf("%d %d %d", &from, &to, &dist);
-        insert(from, {to, dist});
-    }
+    scanf("%d", &N);
+    int ey, ex;
+    scanf("%d %d", &ey, &ex);
+    for (int y = 1; y <= N; y++)
+        for (int x = 1; x <= N; x++)
+            scanf("%d", &grid[y][x]);
 
-    int ret = solve();
+    int ret = dijkstra(ey, ex);
     printf("%d\n", ret);
     return 0;
 }
